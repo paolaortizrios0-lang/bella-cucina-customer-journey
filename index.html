@@ -1,0 +1,1372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Journey · Bella Cucina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FFFFFF;
+    --text: #1D1D1F;
+    --text-2: #6E6E73;
+    --text-3: #86868B;
+    --line: #D2D2D7;
+    --line-faint: #F0F0F2;
+
+    --live: #2F7D4A;
+    --paused: #B07A2E;
+
+    /* Branch palettes — each branch carries its own tint */
+    --c-root-bg: #F1EDE3;
+    --c-root-text: #2A2218;
+    --c-root-line: #B0A88B;
+
+    --c-lead-bg: #F4DDC2;
+    --c-lead-text: #6B4A30;
+    --c-lead-line: #C9A77B;
+    --c-lead-child: #FAEBD6;
+
+    --c-new-bg: #D9E5D9;
+    --c-new-text: #3D5A3D;
+    --c-new-line: #8FAE8F;
+    --c-new-child: #ECF2EC;
+
+    --c-active-bg: #CCD8E5;
+    --c-active-text: #3D506A;
+    --c-active-line: #809AB8;
+    --c-active-child: #E1E8F0;
+
+    --c-vip-bg: #E5D6B5;
+    --c-vip-text: #6E5430;
+    --c-vip-line: #BFA372;
+    --c-vip-child: #F2E8D2;
+
+    --c-atrisk-bg: #E8C9BC;
+    --c-atrisk-text: #7A4A3A;
+    --c-atrisk-line: #BA8770;
+    --c-atrisk-child: #F2DED5;
+
+    --c-cold-bg: #D6D5DE;
+    --c-cold-text: #4A4A5A;
+    --c-cold-line: #9D9DAE;
+    --c-cold-child: #E8E8EE;
+
+    --c-prefs-bg: #DDD5E8;
+    --c-prefs-text: #4F4670;
+    --c-prefs-line: #A398BD;
+    --c-prefs-child: #ECE6F2;
+
+    --c-triggers-bg: #C8DDDD;
+    --c-triggers-text: #2F5A5A;
+    --c-triggers-line: #6FA8A8;
+    --c-triggers-child: #DEEDED;
+
+    --c-editorial-bg: #ECE2C8;
+    --c-editorial-text: #6E5E30;
+    --c-editorial-line: #BFA972;
+    --c-editorial-child: #F4ECD8;
+
+    --c-platform-bg: #E8D2D2;
+    --c-platform-text: #6B3F3F;
+    --c-platform-line: #C39898;
+    --c-platform-child: #F2E2E2;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+    font-weight: 400;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden; /* No page scroll — canvas handles its own */
+  }
+
+  /* ───────── PAGE FRAME ───────── */
+  .page {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .topbar {
+    padding: 28px 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--line-faint);
+    flex-shrink: 0;
+  }
+  .topbar .brand {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--text);
+  }
+  .topbar .meta {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-3);
+    font-weight: 500;
+  }
+
+  /* ───────── CANVAS ───────── */
+  .canvas-wrap {
+    flex: 1;
+    overflow: hidden; /* Figma-style: no native scroll, pan via translate */
+    position: relative;
+    cursor: grab;
+  }
+  .canvas-wrap.panning {
+    cursor: grabbing;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .canvas-wrap.panning .mm-node,
+  .canvas-wrap.panning * {
+    cursor: grabbing !important;
+  }
+  .canvas {
+    min-width: 100%;
+    min-height: 100%;
+    padding: 80px;
+    display: flex;
+    justify-content: safe center;
+    align-items: safe center;
+  }
+
+  /* Zoom + pan wrapper — transform set entirely from JS */
+  .zoom-content {
+    position: relative;
+    transform-origin: center center;
+    will-change: transform;
+  }
+  .zoom-content.animating {
+    transition: transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  /* SVG layer for connection lines */
+  .lines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .mm-line {
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .mm-line.show { opacity: 0.55; }
+  .mm-line-root { stroke: var(--c-root-line); }
+  .mm-line-lead { stroke: var(--c-lead-line); }
+  .mm-line-new { stroke: var(--c-new-line); }
+  .mm-line-active { stroke: var(--c-active-line); }
+  .mm-line-vip { stroke: var(--c-vip-line); }
+  .mm-line-atrisk { stroke: var(--c-atrisk-line); }
+  .mm-line-cold { stroke: var(--c-cold-line); }
+  .mm-line-prefs { stroke: var(--c-prefs-line); }
+  .mm-line-triggers { stroke: var(--c-triggers-line); }
+  .mm-line-editorial { stroke: var(--c-editorial-line); }
+  .mm-line-platform { stroke: var(--c-platform-line); }
+
+  /* ───────── TREE LAYOUT ───────── */
+  .tree {
+    position: relative;
+    z-index: 2;
+    display: inline-block;
+  }
+
+  .mm-branch {
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+  .mm-children {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-left: 90px;
+    align-items: flex-start;
+  }
+  .mm-children > .mm-branch {
+    animation: branchIn 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    animation-delay: var(--stagger, 0ms);
+  }
+
+  @keyframes branchIn {
+    from {
+      opacity: 0;
+      transform: translateX(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* ───────── NODE ───────── */
+  .mm-node {
+    background: var(--node-bg, var(--c-root-bg));
+    color: var(--node-text, var(--c-root-text));
+    border-radius: 100px;
+    padding: 12px 18px 12px 18px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    border: none;
+    transition: transform 0.25s cubic-bezier(0.22, 0.61, 0.36, 1),
+                box-shadow 0.25s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+    user-select: none;
+    position: relative;
+  }
+  .mm-node:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(29, 29, 31, 0.06);
+  }
+  .mm-node.expanded {
+    box-shadow: 0 2px 8px rgba(29, 29, 31, 0.05);
+  }
+
+  /* Root node treatment — larger, more presence */
+  .mm-node.mm-root {
+    padding: 18px 26px 18px 28px;
+    font-size: 16px;
+    font-weight: 600;
+    background: var(--c-root-bg);
+    color: var(--c-root-text);
+  }
+  .mm-node.mm-root .mm-arrow {
+    font-size: 16px;
+  }
+  .mm-node.mm-root .mm-sub {
+    color: var(--c-root-text);
+    opacity: 0.65;
+  }
+
+  .mm-label {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.2;
+  }
+  .mm-sub {
+    font-size: 10px;
+    font-weight: 500;
+    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    line-height: 1.2;
+  }
+
+  .mm-status {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .mm-status.live { background: var(--live); }
+  .mm-status.paused { background: var(--paused); }
+  .mm-status.partial {
+    background: var(--live);
+    box-shadow: 0 0 0 2px rgba(47, 125, 74, 0.18);
+  }
+
+  .mm-arrow {
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0.55;
+    transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+    line-height: 1;
+  }
+  .mm-node.expanded .mm-arrow {
+    transform: rotate(90deg);
+  }
+  .mm-node:hover .mm-arrow {
+    opacity: 1;
+  }
+  .mm-node.leaf .mm-arrow {
+    font-size: 11px;
+    opacity: 0.4;
+  }
+
+  /* Selected leaf — has open note */
+  .mm-node.note-open {
+    box-shadow: 0 0 0 2px var(--node-text, var(--c-root-text)),
+                0 4px 14px rgba(29, 29, 31, 0.08);
+  }
+
+  /* ───────── BRANCH COLOR ASSIGNMENTS ───────── */
+  .mm-node.b-lead { --node-bg: var(--c-lead-bg); --node-text: var(--c-lead-text); }
+  .mm-node.b-new { --node-bg: var(--c-new-bg); --node-text: var(--c-new-text); }
+  .mm-node.b-active { --node-bg: var(--c-active-bg); --node-text: var(--c-active-text); }
+  .mm-node.b-vip { --node-bg: var(--c-vip-bg); --node-text: var(--c-vip-text); }
+  .mm-node.b-atrisk { --node-bg: var(--c-atrisk-bg); --node-text: var(--c-atrisk-text); }
+  .mm-node.b-cold { --node-bg: var(--c-cold-bg); --node-text: var(--c-cold-text); }
+  .mm-node.b-prefs { --node-bg: var(--c-prefs-bg); --node-text: var(--c-prefs-text); }
+  .mm-node.b-triggers { --node-bg: var(--c-triggers-bg); --node-text: var(--c-triggers-text); }
+  .mm-node.b-editorial { --node-bg: var(--c-editorial-bg); --node-text: var(--c-editorial-text); }
+  .mm-node.b-platform { --node-bg: var(--c-platform-bg); --node-text: var(--c-platform-text); }
+
+  /* Children use lighter shade */
+  .mm-node.child-lead { --node-bg: var(--c-lead-child); --node-text: var(--c-lead-text); }
+  .mm-node.child-new { --node-bg: var(--c-new-child); --node-text: var(--c-new-text); }
+  .mm-node.child-active { --node-bg: var(--c-active-child); --node-text: var(--c-active-text); }
+  .mm-node.child-vip { --node-bg: var(--c-vip-child); --node-text: var(--c-vip-text); }
+  .mm-node.child-atrisk { --node-bg: var(--c-atrisk-child); --node-text: var(--c-atrisk-text); }
+  .mm-node.child-cold { --node-bg: var(--c-cold-child); --node-text: var(--c-cold-text); }
+  .mm-node.child-prefs { --node-bg: var(--c-prefs-child); --node-text: var(--c-prefs-text); }
+  .mm-node.child-triggers { --node-bg: var(--c-triggers-child); --node-text: var(--c-triggers-text); }
+  .mm-node.child-editorial { --node-bg: var(--c-editorial-child); --node-text: var(--c-editorial-text); }
+  .mm-node.child-platform { --node-bg: var(--c-platform-child); --node-text: var(--c-platform-text); }
+
+  /* ───────── STICKY NOTE ───────── */
+  .note {
+    position: fixed;
+    z-index: 100;
+    width: 320px;
+    background: var(--bg);
+    border-radius: 14px;
+    box-shadow:
+      0 0 0 1px rgba(29, 29, 31, 0.06),
+      0 12px 36px rgba(29, 29, 31, 0.14),
+      0 4px 12px rgba(29, 29, 31, 0.06);
+    padding: 24px 24px 22px;
+    opacity: 0;
+    transform: translateX(-12px) scale(0.96);
+    transition: opacity 0.25s ease, transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+    pointer-events: none;
+  }
+  .note.open {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    pointer-events: auto;
+  }
+
+  .note-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    background: transparent;
+    border: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--text-3);
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+  }
+  .note-close:hover {
+    background: var(--line-faint);
+    color: var(--text);
+  }
+
+  .note-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 100px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    margin-bottom: 14px;
+  }
+  .note-status.live { background: #E8F3EC; color: var(--live); }
+  .note-status.paused { background: #FBF1E2; color: var(--paused); }
+  .note-status.planned { background: var(--line-faint); color: var(--text-2); }
+  .note-status::before {
+    content: "●";
+    font-size: 8px;
+  }
+
+  .note-title {
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+    color: var(--text);
+    margin-bottom: 18px;
+  }
+
+  .note-details {
+    display: grid;
+    grid-template-columns: 70px 1fr;
+    gap: 10px 14px;
+    margin-bottom: 16px;
+  }
+  .note-details dt {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-3);
+    font-weight: 600;
+    padding-top: 1px;
+  }
+  .note-details dd {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.45;
+  }
+
+  .note-text {
+    font-size: 13px;
+    color: var(--text-2);
+    line-height: 1.5;
+    padding-top: 14px;
+    border-top: 1px solid var(--line-faint);
+    font-style: italic;
+  }
+
+  /* ───────── HINT ───────── */
+  .start-hint {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: var(--text-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 500;
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity 0.4s ease;
+  }
+  .start-hint.hidden { opacity: 0; }
+  .start-hint .pulse {
+    display: inline-block;
+    margin-right: 6px;
+    color: var(--c-lead-text);
+    animation: pulseDot 1.6s ease-in-out infinite;
+  }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  /* ───────── ZOOM CONTROLS ───────── */
+  .zoom-controls {
+    position: fixed;
+    bottom: 28px;
+    left: 32px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 6px;
+    border-radius: 100px;
+    border: 1px solid var(--line-faint);
+    z-index: 50;
+  }
+  .zoom-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 500;
+    font-family: inherit;
+    transition: background 0.15s ease;
+    line-height: 1;
+    padding: 0;
+  }
+  .zoom-btn:hover {
+    background: var(--line-faint);
+  }
+  .zoom-btn:active {
+    background: var(--line);
+  }
+  .zoom-btn.fit {
+    font-size: 14px;
+  }
+  .zoom-level {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    min-width: 56px;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 16px;
+    color: var(--text-2);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: inherit;
+    letter-spacing: 0.04em;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .zoom-level:hover {
+    background: var(--line-faint);
+    color: var(--text);
+  }
+
+  /* ───────── LEGEND (small, fixed corner) ───────── */
+  .legend {
+    position: fixed;
+    bottom: 28px;
+    right: 32px;
+    display: flex;
+    gap: 18px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 10px 16px;
+    border-radius: 100px;
+    border: 1px solid var(--line-faint);
+    z-index: 50;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--text-2);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+  .legend-dot.live { background: var(--live); }
+  .legend-dot.paused { background: var(--paused); }
+  .legend-dot.planned {
+    background: transparent;
+    border: 1px solid var(--text-3);
+  }
+
+  /* ───────── RESPONSIVE ───────── */
+  @media (max-width: 768px) {
+    .topbar { padding: 20px 24px; }
+    .canvas { padding: 40px 30px; }
+    .mm-children { margin-left: 50px; gap: 10px; }
+    .mm-node { font-size: 12.5px; padding: 10px 14px; }
+    .legend { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Minimal top bar -->
+  <div class="topbar">
+    <span class="brand">Bella Cucina</span>
+    <span class="meta">Customer Journey · 2026</span>
+  </div>
+
+  <!-- Mindmap canvas -->
+  <div class="canvas-wrap" id="canvas-wrap">
+    <div class="canvas" id="canvas">
+      <div class="zoom-content" id="zoom-content">
+        <svg class="lines" id="lines"></svg>
+        <div class="tree" id="tree"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sticky note (positioned dynamically) -->
+  <div class="note" id="note"></div>
+
+  <!-- Start hint -->
+  <div class="start-hint" id="hint">
+    <span class="pulse">●</span>Click the root to begin
+  </div>
+
+  <!-- Zoom controls -->
+  <div class="zoom-controls">
+    <button class="zoom-btn" id="zoom-out" aria-label="Zoom out" title="Zoom out (−)">−</button>
+    <button class="zoom-level" id="zoom-reset" aria-label="Reset zoom to 100%" title="Reset zoom (0)">100%</button>
+    <button class="zoom-btn" id="zoom-in" aria-label="Zoom in" title="Zoom in (+)">+</button>
+    <button class="zoom-btn fit" id="zoom-fit" aria-label="Fit to screen" title="Fit all (F)">⤢</button>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot live"></span>Live</div>
+    <div class="legend-item"><span class="legend-dot paused"></span>Paused</div>
+    <div class="legend-item"><span class="legend-dot planned"></span>Planned</div>
+  </div>
+
+</div>
+
+<script>
+  // ═══════════════ DATA ═══════════════
+  // ═══════════════ DATA ═══════════════
+  // Structure mirrors Paola's source mindmap exactly:
+  // Leads → New → Recaptured → Top Spenders → At-Risk and Lost →
+  // Monthly Campaigns → Preferences → Behavioral Triggers → Editorial → Platform
+  // Color keys reuse the v6 palette under new semantic names.
+  const data = {
+    root: {
+      label: 'Bella Cucina',
+      sub: 'Retail Customer Journeys',
+      color: 'root',
+      children: ['leads', 'new', 'recaptured', 'top', 'risk', 'monthly', 'prefs', 'triggers', 'editorial', 'platform']
+    },
+
+    // ─── 1. LEADS AND SIGNUPS ───
+    leads: {
+      label: 'Leads and Signups',
+      sub: 'Entry funnel',
+      color: 'lead',
+      status: 'partial',
+      children: ['leads-1', 'leads-2', 'leads-3', 'leads-4', 'leads-5', 'leads-6', 'leads-7', 'leads-8', 'leads-9']
+    },
+    'leads-1': { label: 'Signup · 15% OFF welcome code', color: 'lead', status: 'live', isLeaf: true,
+      when: '1 minute after signup', what: 'Welcome to Bella Cucina with a 15% off code', plat: 'Flodesk',
+      note: 'The current Welcome workflow. Live in Flodesk today, fires on website popup or landing page form signup.' },
+    'leads-2': { label: '3 Days · Alisa\'s story', color: 'lead', status: 'planned', isLeaf: true,
+      when: '3 days after signup', what: 'The brand origin story in Alisa\'s voice', plat: 'Flodesk',
+      note: 'Planned. Sets the editorial tone before any product introduction.' },
+    'leads-3': { label: '1 Week · Pantry starter reminder', color: 'lead', status: 'planned', isLeaf: true,
+      when: '7 days after signup', what: 'Hero pantry products with the 15% code reminder', plat: 'Flodesk',
+      note: 'Planned. First product-focused send in the welcome arc.' },
+    'leads-4': { label: '2 Weeks · Why Bella Cucina', color: 'lead', status: 'planned', isLeaf: true,
+      when: '14 days after signup', what: 'How we source, how we cook, what we believe', plat: 'Flodesk',
+      note: 'Planned. Deepens brand connection before another product ask.' },
+    'leads-5': { label: '3 Weeks · Welcome code expiration', color: 'lead', status: 'planned', isLeaf: true,
+      when: '21 days after signup', what: 'The welcome offer is closing this week', plat: 'Flodesk',
+      note: 'Planned. Soft urgency, not pressure.' },
+    'leads-6': { label: '4 Weeks · Recipe for your first table', color: 'lead', status: 'planned', isLeaf: true,
+      when: '28 days after signup', what: 'A recipe featuring our products', plat: 'Flodesk',
+      note: 'Planned. Editorial close to the welcome series.' },
+    'leads-7': { label: 'In-Store · Classes calendar', color: 'lead', status: 'planned', isLeaf: true,
+      when: 'After in-store or class signup', what: 'Upcoming class schedule and studio events', plat: 'Flodesk',
+      note: 'Planned. Specific to in-store/class/event leads.' },
+    'leads-8': { label: 'Quarterly · Seasonal feature', color: 'lead', status: 'planned', isLeaf: true,
+      when: 'Every 90 days for non-converted', what: 'Seasonal product plus an offer', plat: 'Flodesk',
+      note: 'Planned. Ongoing nudge for leads who never converted.' },
+    'leads-9': { label: 'Bi-annually · Studio event invitation', color: 'lead', status: 'planned', isLeaf: true,
+      when: 'Twice yearly for non-converted', what: 'Invitation to a private studio event', plat: 'Flodesk',
+      note: 'Planned. Experience-led re-engagement.' },
+
+    // ─── 2. NEW CUSTOMERS (2025-2026) ───
+    new: {
+      label: 'New Customers',
+      sub: '2025 – 2026',
+      color: 'new',
+      status: 'planned',
+      children: ['new-1', 'new-2', 'new-3', 'new-4', 'new-5', 'new-6', 'new-7', 'new-8', 'new-9', 'new-10']
+    },
+    'new-1': { label: 'Immediate · Order confirmation', color: 'new', status: 'planned', isLeaf: true,
+      when: 'Immediately after order placed', what: 'Thank you with order details', plat: 'Shopify',
+      note: 'Needs a custom branded version. Shopify default is transactional and off-brand.' },
+    'new-2': { label: 'Delivery · Ritual for first opening', color: 'new', status: 'planned', isLeaf: true,
+      when: 'Day order is delivered', what: 'Shipping notice framed as an unboxing ritual', plat: 'Shopify',
+      note: 'An atmospheric moment, not a receipt.' },
+    'new-3': { label: '1 Week · Brand introduction', color: 'new', status: 'planned', isLeaf: true,
+      when: '7 days after first order', what: 'Welcome to the table', plat: 'Flodesk',
+      note: 'Planned. First touch from the brand voice after order.' },
+    'new-4': { label: '2 Weeks · Review request', color: 'new', status: 'planned', isLeaf: true,
+      when: '14 days after delivery', what: 'A quiet ask for a review', plat: 'Shopify',
+      note: 'Planned. Framed as feedback, never as a campaign.' },
+    'new-5': { label: '3 Weeks · Recipe inspiration', color: 'new', status: 'planned', isLeaf: true,
+      when: '21 days after first order', what: 'A recipe featuring what they bought', plat: 'Flodesk',
+      note: 'Planned. Connects product to use.' },
+    'new-6': { label: '6 Weeks · Pantry best-sellers', color: 'new', status: 'planned', isLeaf: true,
+      when: '6 weeks after first order', what: 'Build your pantry with our most-loved companions', plat: 'Flodesk',
+      note: 'Planned. Cross-sell with care.' },
+    'new-7': { label: '8 Weeks · Seasonal add-ons', color: 'new', status: 'planned', isLeaf: true,
+      when: '8 weeks after first order', what: 'New arrivals aligned to monthly theme', plat: 'Flodesk',
+      note: 'Planned.' },
+    'new-8': { label: '90 Days · Order check-in', color: 'new', status: 'planned', isLeaf: true,
+      when: '90 days after first order', what: 'Personal note from Alisa for high-value buyers', plat: 'Direct',
+      note: 'Planned. Manual, personal, not templated.' },
+    'new-9': { label: '6 Months · Reorder incentive', color: 'new', status: 'planned', isLeaf: true,
+      when: '180 days after first order', what: '10% off or free tote with next order', plat: 'Flodesk',
+      note: 'Planned. Gentle nudge if no reorder has happened.' },
+    'new-10': { label: '1 Year · Anniversary summary', color: 'new', status: 'planned', isLeaf: true,
+      when: '365 days after first order', what: 'Thank you with sales summary and personal note', plat: 'Direct',
+      note: 'Planned. Direct, never templated.' },
+
+    // ─── 3. RECAPTURED CUSTOMERS ───
+    recaptured: {
+      label: 'Recaptured Customers',
+      sub: 'Returned after lapse',
+      color: 'active',
+      status: 'planned',
+      children: ['rec-1', 'rec-2', 'rec-3', 'rec-4', 'rec-5']
+    },
+    'rec-1': { label: 'Immediate · Welcome back thank you', color: 'active', status: 'planned', isLeaf: true,
+      when: 'Immediately after reorder', what: 'Warm thank you, no offer', plat: 'Flodesk',
+      note: 'Planned. The first touch when a lapsed customer returns.' },
+    'rec-2': { label: '90 Days · Personalized recommendations', color: 'active', status: 'planned', isLeaf: true,
+      when: '90 days after recapture', what: 'Curated products based on past purchases', plat: 'Flodesk',
+      note: 'Planned.' },
+    'rec-3': { label: '120 Days · Bestseller gift offer', color: 'active', status: 'planned', isLeaf: true,
+      when: '120 days after recapture', what: 'Free tote or sample with bestseller purchase', plat: 'Flodesk',
+      note: 'Planned.' },
+    'rec-4': { label: 'Bi-annually · Seasonal additions', color: 'active', status: 'planned', isLeaf: true,
+      when: 'Twice yearly', what: 'Seasonal new arrivals tailored to their interests', plat: 'Flodesk',
+      note: 'Planned.' },
+    'rec-5': { label: 'Annually · Personal thank you note', color: 'active', status: 'planned', isLeaf: true,
+      when: 'Once per year', what: 'Direct note from Alisa for high-value recaptured customers', plat: 'Direct',
+      note: 'Planned. Manual, personal.' },
+
+    // ─── 4. TOP SPENDERS ───
+    top: {
+      label: 'Top Spenders',
+      sub: 'Highest-value customers',
+      color: 'vip',
+      status: 'planned',
+      children: ['top-1', 'top-2', 'top-3', 'top-4']
+    },
+    'top-1': { label: 'Bi-annually · Vintage Vault first access', color: 'vip', status: 'planned', isLeaf: true,
+      when: 'Twice yearly', what: 'Vintage Vault or new arrivals with a 24-hour window', plat: 'Direct',
+      note: 'Planned. Manual, curated. They see it before the list.' },
+    'top-2': { label: 'Bi-annually · Private shopping invitation', color: 'vip', status: 'planned', isLeaf: true,
+      when: 'Twice yearly', what: 'In-store or studio shopping by appointment', plat: 'Direct',
+      note: 'Planned. Top spenders only.' },
+    'top-3': { label: 'Quarterly · Seasonal gift at checkout', color: 'vip', status: 'planned', isLeaf: true,
+      when: 'Every 90 days', what: 'New arrivals plus a gift included at checkout', plat: 'Direct',
+      note: 'Planned.' },
+    'top-4': { label: 'Year-end · One-of-a-kind offer', color: 'vip', status: 'planned', isLeaf: true,
+      when: 'December', what: 'Exclusive Vintage Vault piece plus thank you', plat: 'Direct',
+      note: 'Planned. The deepest gesture of the year.' },
+
+    // ─── 5. AT-RISK AND LOST ───
+    risk: {
+      label: 'At-Risk and Lost',
+      sub: 'Win-back sequence',
+      color: 'atrisk',
+      status: 'planned',
+      children: ['risk-1', 'risk-2', 'risk-3', 'risk-4', 'risk-5', 'risk-6']
+    },
+    'risk-1': { label: 'Decreasing Sales · Volume-based incentive', color: 'atrisk', status: 'planned', isLeaf: true,
+      when: 'When 90-day inactivity triggers', what: 'Bundled discount on a starter set', plat: 'Flodesk',
+      note: 'Planned. First touch when sales pace drops.' },
+    'risk-2': { label: 'First touch · Surprise return gift (15% code)', color: 'atrisk', status: 'planned', isLeaf: true,
+      when: 'First quarterly touch', what: 'Soft welcome back with code', plat: 'Flodesk',
+      note: 'Planned.' },
+    'risk-3': { label: 'Second touch · Free shipping offer', color: 'atrisk', status: 'planned', isLeaf: true,
+      when: 'Second quarterly touch', what: 'Lower the barrier to return', plat: 'Flodesk',
+      note: 'Planned.' },
+    'risk-4': { label: 'Third touch · New arrivals CTA', color: 'atrisk', status: 'planned', isLeaf: true,
+      when: 'Third quarterly touch', what: 'Curated new arrivals since their last visit', plat: 'Flodesk',
+      note: 'Planned.' },
+    'risk-5': { label: 'Fourth touch · Holiday return gift', color: 'atrisk', status: 'planned', isLeaf: true,
+      when: 'Q4 (or fourth touch)', what: 'Free tote with reorder', plat: 'Flodesk',
+      note: 'Planned.' },
+    'risk-6': { label: 'Fourth touch · Exit survey', color: 'atrisk', status: 'planned', isLeaf: true,
+      when: 'Final touch in the sequence', what: 'What would bring you back?', plat: 'Flodesk',
+      note: 'Planned. If they place an order after 365+ days, they enter the Recaptured path.' },
+
+    // ─── 6. MONTHLY CAMPAIGNS (No YTD Orders) ───
+    monthly: {
+      label: 'Monthly Campaigns',
+      sub: 'No YTD orders',
+      color: 'cold',
+      status: 'planned',
+      children: ['mc-jan', 'mc-feb', 'mc-mar', 'mc-may', 'mc-jun', 'mc-aug', 'mc-nov', 'mc-dec']
+    },
+    'mc-jan': { label: 'January · New Year ritual', color: 'cold', status: 'planned', isLeaf: true,
+      when: 'January', what: 'A quiet ritual for starting the year well', plat: 'Flodesk',
+      note: 'Planned. Sets the tone for the year.' },
+    'mc-feb': { label: 'February · Valentine\'s gifting', color: 'cold', status: 'planned', isLeaf: true,
+      when: 'February', what: 'Gifting curation for Valentine\'s', plat: 'Flodesk',
+      note: 'Planned.' },
+    'mc-mar': { label: 'March · Spring arrivals', color: 'cold', status: 'planned', isLeaf: true,
+      when: 'March', what: 'New season, new arrivals', plat: 'Flodesk',
+      note: 'Planned.' },
+    'mc-may': { label: 'May · Mother\'s Day', color: 'cold', status: 'planned', isLeaf: true,
+      when: 'May', what: 'Curated gifts for the women in your life', plat: 'Flodesk',
+      note: 'Planned.' },
+    'mc-jun': { label: 'June · Atlanta Market events', color: 'cold', status: 'planned', isLeaf: true,
+      when: 'June', what: 'Studio and market events for the month', plat: 'Flodesk',
+      note: 'Planned.' },
+    'mc-aug': { label: 'August · Harvest rituals', color: 'cold', status: 'planned', isLeaf: true,
+      when: 'August', what: 'Recipes and products for late-summer harvest', plat: 'Flodesk',
+      note: 'Planned.' },
+    'mc-nov': { label: 'November · Objects of Affection', color: 'cold', status: 'planned', isLeaf: true,
+      when: 'November', what: 'Holiday objects and gifting collection', plat: 'Flodesk',
+      note: 'Planned.' },
+    'mc-dec': { label: 'December · Last-minute gift guide', color: 'cold', status: 'planned', isLeaf: true,
+      when: 'December', what: 'Curated last-minute gifts', plat: 'Flodesk',
+      note: 'Planned.' },
+
+    // ─── 7. PREFERENCES (live Flodesk interest flows) ───
+    prefs: {
+      label: 'Preferences',
+      sub: 'Interest-based flows',
+      color: 'prefs',
+      status: 'partial',
+      children: ['pref-wellness', 'pref-design', 'pref-sweet', 'pref-gifting', 'pref-homecook', 'pref-kitchen']
+    },
+    'pref-wellness': { label: 'Wellness', color: 'prefs', status: 'live', isLeaf: true,
+      when: '2 days after Retail: Wellness tag', what: 'The Art of Well-Being', plat: 'Flodesk',
+      note: 'Live in Flodesk. Fires when a subscriber is tagged with Retail: Wellness interest, regardless of which lifecycle stage they\'re in.' },
+    'pref-design': { label: 'Design', color: 'prefs', status: 'live', isLeaf: true,
+      when: '2 days after Retail: Design tag', what: 'The Beauty of Artful Living', plat: 'Flodesk',
+      note: 'Live in Flodesk. Cross-cutting across all customer states.' },
+    'pref-sweet': { label: 'Sweet Lovers', color: 'prefs', status: 'live', isLeaf: true,
+      when: '2 days after Retail: Sweet Lovers tag', what: 'Dolci Workflow Template', plat: 'Flodesk',
+      note: 'Live in Flodesk. Still thinking about Bella Cucina\'s Dolci Desserts.' },
+    'pref-gifting': { label: 'Gifting', color: 'prefs', status: 'live', isLeaf: true,
+      when: '2 days after Retail: Gifting tag', what: 'The Art of Giving', plat: 'Flodesk',
+      note: 'Live in Flodesk. Cross-cutting.' },
+    'pref-homecook': { label: 'Home Cook', color: 'prefs', status: 'live', isLeaf: true,
+      when: '3 days after Retail: Home Cook or Food Enthusiasts tag', what: 'Good Vibes Only', plat: 'Flodesk',
+      note: 'Live in Flodesk. A signature scent introduction.' },
+    'pref-kitchen': { label: 'Kitchen Diaries', color: 'prefs', status: 'paused', isLeaf: true,
+      when: '1 day after Workflow: Retail Kitchen Diaries tag', what: 'Welcome letter, then branched follow-up if opened', plat: 'Flodesk',
+      note: 'Paused. The only preference flow with conditional branching today. Open-based gating sends the deeper Kitchen Diaries x Bella Cucina email only to engaged subscribers. The pattern is worth reusing.' },
+
+    // ─── 8. BEHAVIORAL TRIGGERS ───
+    triggers: {
+      label: 'Behavioral Triggers',
+      sub: 'Cross-segment events',
+      color: 'triggers',
+      status: 'partial',
+      children: ['trig-cart', 'trig-checkout', 'trig-browse', 'trig-restock', 'trig-review']
+    },
+    'trig-cart': { label: 'Abandon Cart · 3-email sequence', color: 'triggers', status: 'live', isLeaf: true,
+      when: 'Shopify · cart abandoned', what: 'Three-email recovery sequence', plat: 'Shopify',
+      note: 'Live and converting. Fires for any customer at any stage.' },
+    'trig-checkout': { label: 'Checkout Abandoned · 3-email with free tote', color: 'triggers', status: 'live', isLeaf: true,
+      when: 'Shopify · checkout abandoned', what: 'Three emails with free tote incentive', plat: 'Shopify',
+      note: 'Live. Our strongest converter. The model the other triggers should learn from.' },
+    'trig-browse': { label: 'Browse · Product pairing suggestions', color: 'triggers', status: 'planned', isLeaf: true,
+      when: 'Shopify · product viewed, no cart add', what: 'Two-email sequence with pairing ideas', plat: 'Shopify',
+      note: 'Planned.' },
+    'trig-restock': { label: 'Restock · Back in stock notification', color: 'triggers', status: 'planned', isLeaf: true,
+      when: 'Shopify · product restocked + waitlist tag', what: 'It\'s back notification', plat: 'Shopify',
+      note: 'Planned. Requires a notify-me button on sold-out product pages.' },
+    'trig-review': { label: 'Post-Purchase · Review request', color: 'triggers', status: 'planned', isLeaf: true,
+      when: 'Shopify · 14 days after delivery', what: 'A quiet ask for a review', plat: 'Shopify',
+      note: 'Planned. Framed as feedback, never as a campaign.' },
+
+    // ─── 9. EDITORIAL SENDS ───
+    editorial: {
+      label: 'Editorial Sends',
+      sub: 'Always running',
+      color: 'editorial',
+      status: 'live',
+      children: ['ed-tuesday', 'ed-midweek', 'ed-vault', 'ed-objects']
+    },
+    'ed-tuesday': { label: 'Tuesday · Bella\'s Weekly Recipe', color: 'editorial', status: 'live', isLeaf: true,
+      when: 'Every Tuesday', what: 'The weekly recipe newsletter', plat: 'Flodesk',
+      note: 'Live. The fixed cornerstone of the editorial week.' },
+    'ed-midweek': { label: 'Wed · Thu · Fri · Product or class feature', color: 'editorial', status: 'live', isLeaf: true,
+      when: 'One of those three days each week', what: 'Single product focus or class promotion', plat: 'Flodesk',
+      note: 'Live. A single send on one of those days. If a class is scheduled, it leads. Otherwise, a product focus.' },
+    'ed-vault': { label: 'Monthly · Vintage Vault', color: 'editorial', status: 'live', isLeaf: true,
+      when: 'Once per month', what: 'Curated designer and one-of-a-kind pieces', plat: 'Flodesk',
+      note: 'Live. The monthly designer drop newsletter.' },
+    'ed-objects': { label: 'Monthly · Objects of Affection', color: 'editorial', status: 'live', isLeaf: true,
+      when: 'Once per month', what: 'The lifestyle and home objects collection', plat: 'Flodesk',
+      note: 'Live.' },
+
+    // ─── 10. PLATFORM STRATEGY ───
+    platform: {
+      label: 'Platform Strategy',
+      sub: 'How channels divide work',
+      color: 'platform',
+      status: 'live',
+      children: ['plat-shopify', 'plat-flodesk']
+    },
+    'plat-shopify': { label: 'Shopify · Transactional', color: 'platform', status: 'live', isLeaf: true,
+      when: 'Order events and behavior triggers', what: 'Order confirmation, shipping, cart and checkout abandonment, review requests', plat: 'Shopify',
+      note: 'Shopify is the transactional layer. Anything tied to an order event lives here.' },
+    'plat-flodesk': { label: 'Flodesk · Brand storytelling', color: 'platform', status: 'live', isLeaf: true,
+      when: 'Editorial, nurture, and preference flows', what: 'Welcome series, newsletters, preference flows, monthly campaigns', plat: 'Flodesk',
+      note: 'Flodesk is the editorial and brand layer. Anything voice-led lives here.' }
+  };
+
+  // ═══════════════ STATE ═══════════════
+  const state = {
+    expanded: new Set(),
+    openNote: null,
+    zoom: 1.0,
+    pan: { x: 0, y: 0 }
+  };
+
+  // ═══════════════ DOM ═══════════════
+  const treeEl = document.getElementById('tree');
+  const svg = document.getElementById('lines');
+  const noteEl = document.getElementById('note');
+  const canvas = document.getElementById('canvas');
+  const canvasWrap = document.getElementById('canvas-wrap');
+  const zoomContent = document.getElementById('zoom-content');
+  const hintEl = document.getElementById('hint');
+  const zoomLevelEl = document.getElementById('zoom-reset');
+
+  // ═══════════════ RENDER ═══════════════
+  function render() {
+    treeEl.innerHTML = '';
+    renderBranch('root', treeEl, 0);
+    requestAnimationFrame(() => {
+      drawLines();
+    });
+  }
+
+  function renderBranch(id, container, depth) {
+    const nodeData = data[id];
+    if (!nodeData) return;
+
+    const branchEl = document.createElement('div');
+    branchEl.className = 'mm-branch';
+
+    const nodeEl = createNode(id, nodeData, depth);
+    branchEl.appendChild(nodeEl);
+
+    if (state.expanded.has(id) && nodeData.children && nodeData.children.length) {
+      const childrenEl = document.createElement('div');
+      childrenEl.className = 'mm-children';
+      childrenEl.dataset.parentId = id;
+      nodeData.children.forEach((childId, i) => {
+        const childBranch = renderBranch(childId, childrenEl, depth + 1);
+      });
+      branchEl.appendChild(childrenEl);
+      // Stagger animation on children
+      [...childrenEl.children].forEach((child, i) => {
+        child.style.setProperty('--stagger', `${i * 50}ms`);
+      });
+    }
+
+    container.appendChild(branchEl);
+    return branchEl;
+  }
+
+  function createNode(id, nodeData, depth) {
+    const el = document.createElement('button');
+    el.className = 'mm-node';
+    el.dataset.id = id;
+
+    // Apply color class
+    if (depth === 0) {
+      el.classList.add('mm-root');
+    } else if (nodeData.isLeaf) {
+      el.classList.add('leaf');
+      el.classList.add(`child-${nodeData.color}`);
+    } else {
+      el.classList.add(`b-${nodeData.color}`);
+    }
+
+    if (state.expanded.has(id)) {
+      el.classList.add('expanded');
+    }
+
+    // Status dot
+    let statusHtml = '';
+    if (nodeData.status === 'live') {
+      statusHtml = '<span class="mm-status live" title="Live"></span>';
+    } else if (nodeData.status === 'paused') {
+      statusHtml = '<span class="mm-status paused" title="Paused"></span>';
+    } else if (nodeData.status === 'partial') {
+      statusHtml = '<span class="mm-status partial" title="Partially live"></span>';
+    }
+
+    // Label content
+    const labelHtml = nodeData.sub
+      ? `<span class="mm-label"><span>${nodeData.label}</span><span class="mm-sub">${nodeData.sub}</span></span>`
+      : `<span class="mm-label">${nodeData.label}</span>`;
+
+    // Arrow indicator
+    const arrowHtml = nodeData.isLeaf
+      ? '<span class="mm-arrow">›</span>'
+      : '<span class="mm-arrow">›</span>';
+
+    el.innerHTML = statusHtml + labelHtml + arrowHtml;
+
+    return el;
+  }
+
+  // ═══════════════ LINES ═══════════════
+  function drawLines() {
+    svg.innerHTML = '';
+    // Size SVG to match tree's unscaled bounds
+    const treeW = treeEl.offsetWidth;
+    const treeH = treeEl.offsetHeight;
+    svg.setAttribute('width', treeW);
+    svg.setAttribute('height', treeH);
+    svg.setAttribute('viewBox', `0 0 ${treeW} ${treeH}`);
+    svg.style.width = treeW + 'px';
+    svg.style.height = treeH + 'px';
+
+    // Compute tree's offset within zoom-content so line coordinates align
+    const treeOffsetLeft = treeEl.offsetLeft;
+    const treeOffsetTop = treeEl.offsetTop;
+    svg.style.left = treeOffsetLeft + 'px';
+    svg.style.top = treeOffsetTop + 'px';
+
+    state.expanded.forEach(parentId => {
+      const parentEl = canvas.querySelector(`.mm-node[data-id="${parentId}"]`);
+      const childrenContainer = canvas.querySelector(`.mm-children[data-parent-id="${parentId}"]`);
+      if (!parentEl || !childrenContainer) return;
+
+      const children = childrenContainer.querySelectorAll(':scope > .mm-branch > .mm-node');
+
+      children.forEach((childEl, i) => {
+        // Use offsetLeft/offsetTop chain — gives unscaled positions inside zoom-content
+        const p = getNodeOffsetWithinTree(parentEl);
+        const c = getNodeOffsetWithinTree(childEl);
+        const x1 = p.left + parentEl.offsetWidth;
+        const y1 = p.top + parentEl.offsetHeight / 2;
+        const x2 = c.left;
+        const y2 = c.top + childEl.offsetHeight / 2;
+
+        const dx = x2 - x1;
+        const cx1 = x1 + dx * 0.55;
+        const cx2 = x2 - dx * 0.55;
+        const d = `M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}`;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', d);
+        const parentColor = data[parentId].color || 'root';
+        path.setAttribute('class', `mm-line mm-line-${parentColor}`);
+        svg.appendChild(path);
+
+        try {
+          const length = path.getTotalLength();
+          path.style.strokeDasharray = length;
+          path.style.strokeDashoffset = length;
+          requestAnimationFrame(() => {
+            path.style.transition = `stroke-dashoffset 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) ${i * 50}ms`;
+            path.style.strokeDashoffset = '0';
+            setTimeout(() => path.classList.add('show'), i * 50);
+          });
+        } catch (e) {
+          path.classList.add('show');
+        }
+      });
+    });
+  }
+
+  // Walk offsetParent chain to get a node's position within the tree
+  function getNodeOffsetWithinTree(el) {
+    let left = 0, top = 0;
+    let current = el;
+    while (current && current !== treeEl) {
+      left += current.offsetLeft;
+      top += current.offsetTop;
+      current = current.offsetParent;
+      if (current === treeEl.offsetParent) break;
+    }
+    return { left, top };
+  }
+
+  // ═══════════════ INTERACTION ═══════════════
+  function toggleExpand(id) {
+    if (state.expanded.has(id)) {
+      collapseRecursive(id);
+    } else {
+      state.expanded.add(id);
+    }
+    closeNote();
+    hideHint();
+    render();
+  }
+
+  function collapseRecursive(id) {
+    state.expanded.delete(id);
+    const nodeData = data[id];
+    if (nodeData && nodeData.children) {
+      nodeData.children.forEach(childId => {
+        if (state.expanded.has(childId)) {
+          collapseRecursive(childId);
+        }
+      });
+    }
+  }
+
+  function openNote(id, nodeEl) {
+    const nodeData = data[id];
+    if (!nodeData || !nodeData.isLeaf) return;
+
+    // Clear previous selection
+    document.querySelectorAll('.mm-node.note-open').forEach(n => n.classList.remove('note-open'));
+    nodeEl.classList.add('note-open');
+
+    const statusLabel = nodeData.status === 'live' ? 'Live'
+                      : nodeData.status === 'paused' ? 'Paused'
+                      : 'Planned';
+
+    noteEl.innerHTML = `
+      <button class="note-close" aria-label="Close">×</button>
+      <span class="note-status ${nodeData.status}">${statusLabel}</span>
+      <h3 class="note-title">${nodeData.label}</h3>
+      <dl class="note-details">
+        <dt>When</dt><dd>${nodeData.when}</dd>
+        <dt>Sends</dt><dd>${nodeData.what}</dd>
+        <dt>Platform</dt><dd>${nodeData.plat}</dd>
+      </dl>
+      ${nodeData.note ? `<p class="note-text">${nodeData.note}</p>` : ''}
+    `;
+
+    // Position next to node
+    positionNote(nodeEl);
+    requestAnimationFrame(() => noteEl.classList.add('open'));
+    state.openNote = id;
+
+    // Close button
+    noteEl.querySelector('.note-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeNote();
+    });
+  }
+
+  function positionNote(nodeEl) {
+    const rect = nodeEl.getBoundingClientRect();
+    const noteWidth = 320;
+    const margin = 24;
+    let left = rect.right + margin;
+    let top = rect.top;
+
+    // If would overflow right, position to left of node
+    if (left + noteWidth > window.innerWidth - 24) {
+      left = rect.left - noteWidth - margin;
+    }
+    // If still bad, fall back to centered
+    if (left < 24) {
+      left = Math.max(24, rect.left);
+    }
+    // If would overflow bottom, shift up
+    const noteHeight = 280;
+    if (top + noteHeight > window.innerHeight - 24) {
+      top = window.innerHeight - noteHeight - 24;
+    }
+    if (top < 24) top = 24;
+
+    noteEl.style.left = left + 'px';
+    noteEl.style.top = top + 'px';
+  }
+
+  function closeNote() {
+    noteEl.classList.remove('open');
+    document.querySelectorAll('.mm-node.note-open').forEach(n => n.classList.remove('note-open'));
+    state.openNote = null;
+  }
+
+  function hideHint() {
+    hintEl.classList.add('hidden');
+  }
+
+  // Event delegation for node clicks
+  treeEl.addEventListener('click', (e) => {
+    // If the user dragged, swallow this click — they panned, didn't click
+    if (didDrag) {
+      didDrag = false;
+      return;
+    }
+    const node = e.target.closest('.mm-node');
+    if (!node) return;
+    e.stopPropagation();
+    const id = node.dataset.id;
+    const nodeData = data[id];
+    if (!nodeData) return;
+
+    if (nodeData.isLeaf) {
+      // Toggle the note: if already open for this leaf, close it
+      if (state.openNote === id) {
+        closeNote();
+      } else {
+        openNote(id, node);
+      }
+      hideHint();
+    } else {
+      toggleExpand(id);
+    }
+  });
+
+  // Click outside to close note (also respects drag)
+  document.addEventListener('click', (e) => {
+    if (didDrag) return; // don't treat the end of a pan as a click
+    if (e.target.closest('.note') || e.target.closest('.mm-node')) return;
+    closeNote();
+  });
+
+  // Escape to close, plus zoom shortcuts
+  document.addEventListener('keydown', (e) => {
+    // Ignore if user is typing in a field (defensive)
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    if (e.key === 'Escape') {
+      if (state.openNote) closeNote();
+      return;
+    }
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault();
+      zoomIn();
+    } else if (e.key === '-' || e.key === '_') {
+      e.preventDefault();
+      zoomOut();
+    } else if (e.key === '0') {
+      e.preventDefault();
+      zoomReset();
+    } else if (e.key === 'f' || e.key === 'F') {
+      e.preventDefault();
+      fitToScreen();
+    }
+  });
+
+  // ═══════════════ PAN + ZOOM (Figma-style translate-based) ═══════════════
+  const PAN_THRESHOLD = 5; // pixels of movement before a click becomes a drag
+  const ZOOM_MIN = 0.3;
+  const ZOOM_MAX = 2.0;
+  const ZOOM_STEP = 0.1;
+  let panState = null;
+  let didDrag = false;
+
+  // Single source of truth: apply translate + scale together
+  function applyTransform(animate) {
+    zoomContent.classList.toggle('animating', !!animate);
+    zoomContent.style.transform =
+      `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+  }
+
+  function setZoom(newZoom, animate = true) {
+    const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+    state.zoom = Math.round(clamped * 100) / 100;
+    applyTransform(animate);
+    zoomLevelEl.textContent = Math.round(state.zoom * 100) + '%';
+    if (state.openNote) {
+      setTimeout(() => {
+        const nodeEl = canvas.querySelector(`.mm-node[data-id="${state.openNote}"]`);
+        if (nodeEl) positionNote(nodeEl);
+      }, animate ? 420 : 20);
+    }
+  }
+
+  function setPan(x, y, animate = false) {
+    state.pan = { x, y };
+    applyTransform(animate);
+  }
+
+  function zoomIn() { setZoom(state.zoom + ZOOM_STEP); }
+  function zoomOut() { setZoom(state.zoom - ZOOM_STEP); }
+  function zoomReset() {
+    setPan(0, 0, true);
+    setZoom(1.0, true);
+  }
+
+  function fitToScreen() {
+    // Reset pan first so the content centers cleanly
+    setPan(0, 0, false);
+    const previousZoom = state.zoom;
+    setZoom(1.0, false);
+    requestAnimationFrame(() => {
+      const viewport = canvasWrap.getBoundingClientRect();
+      const w = zoomContent.offsetWidth;
+      const h = zoomContent.offsetHeight;
+      if (w === 0 || h === 0) {
+        setZoom(previousZoom, false);
+        return;
+      }
+      const padding = 120;
+      const scaleX = (viewport.width - padding) / w;
+      const scaleY = (viewport.height - padding) / h;
+      const scale = Math.min(scaleX, scaleY, 1.2);
+      setZoom(Math.max(ZOOM_MIN, scale), true);
+    });
+  }
+
+  // ─── Mouse drag = pan via translate (no scroll involved) ───
+  canvasWrap.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    // Don't start pan from a UI element that should handle its own clicks
+    if (e.target.closest('.note, .note-close, .zoom-controls, .legend')) return;
+
+    panState = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startPanX: state.pan.x,
+      startPanY: state.pan.y
+    };
+    didDrag = false;
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!panState) return;
+    const dx = e.clientX - panState.startX;
+    const dy = e.clientY - panState.startY;
+    if (!didDrag && (Math.abs(dx) > PAN_THRESHOLD || Math.abs(dy) > PAN_THRESHOLD)) {
+      didDrag = true;
+      canvasWrap.classList.add('panning');
+      if (state.openNote) closeNote();
+    }
+    if (didDrag) {
+      setPan(panState.startPanX + dx, panState.startPanY + dy, false);
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!panState) return;
+    canvasWrap.classList.remove('panning');
+    panState = null;
+  });
+
+  document.addEventListener('mouseleave', () => {
+    if (panState) {
+      canvasWrap.classList.remove('panning');
+      panState = null;
+    }
+  });
+
+  // ─── Wire up zoom buttons ───
+  document.getElementById('zoom-in').addEventListener('click', zoomIn);
+  document.getElementById('zoom-out').addEventListener('click', zoomOut);
+  document.getElementById('zoom-reset').addEventListener('click', zoomReset);
+  document.getElementById('zoom-fit').addEventListener('click', fitToScreen);
+
+  // ─── Wheel: pan with two-finger swipe; Cmd/Ctrl+wheel = zoom ───
+  canvasWrap.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey) {
+      const delta = -Math.sign(e.deltaY) * ZOOM_STEP;
+      setZoom(state.zoom + delta, false);
+    } else {
+      // Trackpad two-finger pan: deltaX and deltaY drive translate
+      setPan(state.pan.x - e.deltaX, state.pan.y - e.deltaY, false);
+    }
+  }, { passive: false });
+
+  // ─── Redraw lines on resize ───
+  window.addEventListener('resize', () => {
+    drawLines();
+    if (state.openNote) {
+      const nodeEl = canvas.querySelector(`.mm-node[data-id="${state.openNote}"]`);
+      if (nodeEl) positionNote(nodeEl);
+    }
+  });
+
+  // ═══════════════ INIT ═══════════════
+  render();
+</script>
+
+</body>
+</html>
